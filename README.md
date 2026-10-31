@@ -47,8 +47,8 @@ python3 -m unittest discover -s tests
 
 ### `history/seed/`
 
-What two test phones, the iOS simulators and two Android emulators had recorded before collection
-began, in the same line format:
+What two test phones, a tablet, the iOS simulators and two Android emulators had recorded before
+collection began, in the same line format:
 
 | File | Span (EDT) | Rows |
 |---|---|---|
@@ -57,6 +57,7 @@ began, in the same line format:
 | `pixel4a-1.0.3-2026-10-31.ndjson.gz` | Aug 22 21:52 to Sept 11 02:49 | 103,949 |
 | `ios-simulators-2026-10-31.ndjson.gz` | June 7 15:14 to Oct 20 20:05, 19 scattered days | 251,479 |
 | `avds-2026-10-31.ndjson.gz` | July 5 08:18 to Oct 17 17:53, 5 scattered days | 44,430 |
+| `tabs7-1.0.3-2026-10-31.ndjson.gz` | July 18 02:08 and Aug 2 09:10 | 12,986 |
 
 Use them together to bootstrap, but keep them apart from the daily files. Their limits, with the
 figures covering the two October phone files:
@@ -104,6 +105,10 @@ Android emulators, so a row is a sighting here too: 8 refreshes on 5 days, 6 of 
 Jul 5, Jul 15 and Aug 1 are the only data between June 22 and Aug 2. No row repeats one in another
 file. Each database's last row for a station and grade equals the price on its station row, for
 all 27,595, and the 193 prices within 2 minutes of a phone's refresh are all equal.
+
+**The Tab S7+ file is two refreshes** from an old 1.0.3 debug install, nearly full snapshots because
+they're 15 days apart. July 18 is the only data between July 15 and Aug 1. No row repeats one in
+another file, and its last rows equal the prices on its station rows, for all 6,909.
 
 ## Attribution
 
