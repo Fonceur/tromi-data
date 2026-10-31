@@ -47,16 +47,18 @@ python3 -m unittest discover -s tests
 
 ### `history/seed/`
 
-What two test phones had recorded before collection began, in the same line format:
+What two test phones and the iOS simulators had recorded before collection began, in the same
+line format:
 
 | File | Span (EDT) | Rows |
 |---|---|---|
 | `pixel8a-2026-10-30.ndjson.gz` | Sept 30 22:15 to Oct 30 21:54 | 178,175 |
 | `pixel4a-2026-10-30.ndjson.gz` | Oct 10 16:50 to Oct 28 08:41 | 101,781 |
 | `pixel4a-1.0.3-2026-10-31.ndjson.gz` | Aug 22 21:52 to Sept 11 02:49 | 103,949 |
+| `ios-simulators-2026-10-31.ndjson.gz` | June 7 15:14 to Oct 20 20:05, 19 scattered days | 251,479 |
 
 Use them together to bootstrap, but keep them apart from the daily files. Their limits, with the
-figures covering the two October files:
+figures covering the two October phone files:
 
 - **Timing is coarse.** A row is stamped when the phone next refreshed, not when the price
   changed. Together the phones have a recorded refresh in 87% of 3-hour slots over the 4a's span.
@@ -80,6 +82,21 @@ days before the 8a's file starts, so its last prices aren't a starting point for
 155 refreshes, 3 h apart on average and up to 12.2 h. The phone has nothing older, and its first
 refresh holds 5,326 prices, so that isn't a full baseline. Its last row for each station and grade
 equals the price on the phone's station row, for all 6,918 that have both.
+
+**The simulators' file differs again.** `tools/seed_from_simulators.py` merged 25 iOS simulators'
+databases and 6 Xcode test clones, and dropped 117,863 exact duplicates. A simulator refreshed only
+when someone ran the app, so this is 176 refreshes on 19 days, not a steady record. 24 of them are
+full snapshots of the feed, on 13 of those days. One, on Sept 12, is the only data between the 1.0.3
+file and Sept 30. Nothing covers Sept 13 to 29.
+
+- **A row is a sighting, not a change.** The file merges separate databases, so a line can repeat
+  the price before it. Each row means "this price at this time".
+- **Snapshots fill in what a phone's first rows can't.** At noon on Oct 5 the October phone files
+  know 51.5% of their 6,923 station and grade pairs. Sim rows from the 3 days before raise that to
+  99.0%.
+- **It has stations the phones don't:** 16 that have since been re-keyed or left the feed.
+- **It agrees with the phones.** Within 2 minutes of a phone's refresh, 11,245 of 11,263 prices
+  are equal. The other 18 are one refresh, 82 s after the phone's, during a 3¢ move.
 
 ## Attribution
 
