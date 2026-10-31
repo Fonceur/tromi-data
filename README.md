@@ -47,9 +47,26 @@ python3 -m unittest discover -s tests
 
 ### `history/seed/`
 
-`pixel-2026-10-30.ndjson.gz` is the 30 days a test Pixel 8a had recorded before collection
-began. It's the same line format, but captured whenever the app happened to refresh, so its
-timing is coarser than the daily files. Use it to bootstrap, and don't mix it with them.
+What two test phones had recorded before collection began, in the same line format:
+
+| File | Span (EDT) | Rows |
+|---|---|---|
+| `pixel8a-2026-10-30.ndjson.gz` | Sept 30 22:15 to Oct 30 21:54 | 178,175 |
+| `pixel4a-2026-10-30.ndjson.gz` | Oct 10 16:50 to Oct 28 08:41 | 101,781 |
+
+Use them together to bootstrap, but keep them apart from the daily files. Their limits:
+
+- **Timing is coarse.** A row is stamped when the phone next refreshed, not when the price
+  changed. Together the phones have a recorded refresh in 87% of 3-hour slots over the 4a's span.
+- **A first row isn't a change.** It means "this price, at or before this time". Phones delete
+  rows older than 30 days, including the one that set a long-standing price, so a price is only
+  known from its next change. The 4a's first refresh is a real baseline of 6,745 prices.
+- **Coverage:** together they know a price for 86.0% of the 30 days (the 8a alone, 81.7%). From
+  Oct 11 on, 99.3% of current station and grade combinations are known.
+- **Closed stations are mostly missing.** A phone deletes a station's history along with it.
+
+When both phones refreshed within 2 minutes of each other, they agreed on 99.96% of 18,803
+prices.
 
 ## Attribution
 
