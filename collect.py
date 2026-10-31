@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Record every Régie gas-price change, because nobody else keeps them.
 
-The Régie republishes its feed every 15 minutes and keeps only the latest files,
+The Régie republishes its feed every 5 minutes and keeps only the latest files,
 so a price not recorded on the day cannot be recovered later. Each run compares
 the feed with `state/latest.json` and appends what changed to
 `history/YYYY/MM/DD.ndjson` (UTC day of the feed's `generated_at`):

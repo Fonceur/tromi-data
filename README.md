@@ -8,7 +8,7 @@ Recording prices isn't publishing them. Nothing here is served to the app yet.
 
 ## Price history
 
-The Régie de l'énergie du Québec republishes its feed every 15 minutes and keeps only
+The Régie de l'énergie du Québec republishes its feed every 5 minutes and keeps only
 the latest files, so a price that isn't recorded on the day can't be recovered.
 `.github/workflows/collect.yml` runs `collect.py` on a schedule:
 
