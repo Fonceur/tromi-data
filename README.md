@@ -47,8 +47,8 @@ python3 -m unittest discover -s tests
 
 ### `history/seed/`
 
-What two test phones and the iOS simulators had recorded before collection began, in the same
-line format:
+What two test phones, the iOS simulators and two Android emulators had recorded before collection
+began, in the same line format:
 
 | File | Span (EDT) | Rows |
 |---|---|---|
@@ -56,6 +56,7 @@ line format:
 | `pixel4a-2026-10-30.ndjson.gz` | Oct 10 16:50 to Oct 28 08:41 | 101,781 |
 | `pixel4a-1.0.3-2026-10-31.ndjson.gz` | Aug 22 21:52 to Sept 11 02:49 | 103,949 |
 | `ios-simulators-2026-10-31.ndjson.gz` | June 7 15:14 to Oct 20 20:05, 19 scattered days | 251,479 |
+| `avds-2026-10-31.ndjson.gz` | July 5 08:18 to Oct 17 17:53, 5 scattered days | 44,430 |
 
 Use them together to bootstrap, but keep them apart from the daily files. Their limits, with the
 figures covering the two October phone files:
@@ -97,6 +98,12 @@ file and Sept 30. Nothing covers Sept 13 to 29.
 - **It has stations the phones don't:** 16 that have since been re-keyed or left the feed.
 - **It agrees with the phones.** Within 2 minutes of a phone's refresh, 11,245 of 11,263 prices
   are equal. The other 18 are one refresh, 82 s after the phone's, during a 3¢ move.
+
+**The emulators' file reads the same way.** The same tool merged both Tromi packages from two
+Android emulators, so a row is a sighting here too: 8 refreshes on 5 days, 6 of them full snapshots.
+Jul 5, Jul 15 and Aug 1 are the only data between June 22 and Aug 2. No row repeats one in another
+file. Each database's last row for a station and grade equals the price on its station row, for
+all 27,595, and the 193 prices within 2 minutes of a phone's refresh are all equal.
 
 ## Attribution
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""One-off: merge iOS simulators' `price_snapshots` tables into the archive's line format.
+"""One-off: merge iOS simulators' or Android emulators' `price_snapshots` tables into the
+archive's line format.
 
     python3 tools/seed_from_simulators.py <out.ndjson.gz> <tromi.db> [<tromi.db> ...]
 
@@ -16,8 +17,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import collect  # noqa: E402
 
-# iOS stores its enum's raw values; the archive uses the app-wide names.
-FUELS = {"regulier": "REGULIER", "super_": "SUPER", "diesel": "DIESEL"}
+# iOS stores its enum's raw values; Android stores the names the archive uses. Listing both
+# keeps an unknown value a KeyError rather than a new fuel in the archive.
+FUELS = {"regulier": "REGULIER", "super_": "SUPER", "diesel": "DIESEL",
+         "REGULIER": "REGULIER", "SUPER": "SUPER", "DIESEL": "DIESEL"}
 
 
 def stamp(captured_at):
