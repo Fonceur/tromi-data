@@ -1,0 +1,46 @@
+name: Collect prices
+
+# Off the hour on purpose: GitHub delays or drops scheduled runs under load, worst
+# at the top of the hour. The feed republishes every 15 minutes, so a late or
+# missed run only coarsens the timing of a change; it doesn't lose the last price.
+# Every 3 hours while this repo is private (about 240 Actions minutes a month,
+# shared with Tromi's CI); hourly once it's public.
+on:
+  schedule:
+    - cron: "17 */3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: collect
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Unit tests
+        run: python3 -m unittest discover -s tests
+
+      - name: Collect
+        run: python3 collect.py
+
+      # Committed each run, not daily: a lost run can't be re-fetched. Plain-text
+      # daily files and one-entry-per-line state keep these commits small.
+      - name: Commit
+        run: |
+          git add history state
+          if git diff --cached --quiet; then
+            echo "Nothing to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -q -m "prices: $(python3 -c "import json; print(json.load(open('state/feed.json'))['generated_at'])")"
+          git pull -q --rebase
+          git push -q
