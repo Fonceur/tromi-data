@@ -113,6 +113,34 @@ all 27,595, and the 193 prices within 2 minutes of a phone's refresh are all equ
 they're 15 days apart. July 18 is the only data between July 15 and Aug 1. No row repeats one in
 another file, and its last rows equal the prices on its station rows, for all 6,909.
 
+## Published file
+
+`publish.py` builds `data/qc/prices-30d.json`, the last 30 days of changes, which Tromi
+downloads once to fill in a new install's price history. The workflow's `publish` job deploys
+only that file to GitHub Pages, at `https://fonceur.github.io/tromi-data/data/qc/prices-30d.json`,
+after each run that recorded a change.
+
+```json
+{"source":"Régie essence Québec, Régie de l'énergie","source_url":"https://regieessencequebec.ca",
+ "terms":"…","from":1762494900,"to":1765086900,"unit":"tenths of a cent: 1994 is 199.4¢",
+ "rows":"…","stations":{"<id>":{"REGULIER":[[1765000000,1994]]}}}
+```
+
+- Each `[epoch seconds, price]` is a published price, stamped with the feed time it was first
+  seen at. A row is kept only where the price differs from the one before it, which is how the
+  app stores history, so nothing is averaged, rounded or filled in.
+- A station and grade whose price didn't change in the window has no rows.
+- `null` rows are left out: a price that left the feed simply stops.
+- Before collection began (2026-10-31 02:30 UTC), rows come from `history/seed/`.
+- Under 2,000 stations, the build fails and Pages keeps the last good file.
+- About 2,450 stations and 186,000 rows on 2026-11-07: 3.4 MB, 620 KB gzipped.
+
+Every file carries `source` and `terms`, so a downloaded copy keeps its attribution.
+
+```bash
+python3 publish.py   # writes _site/data/qc/prices-30d.json
+```
+
 ## Source and terms
 
 The prices come from **Régie essence Québec, Régie de l'énergie**: the
