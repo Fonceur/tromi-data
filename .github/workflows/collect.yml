@@ -3,11 +3,11 @@ name: Collect prices
 # Off the hour on purpose: GitHub delays or drops scheduled runs under load, worst
 # at the top of the hour. The feed republishes every 5 minutes, so a late or
 # missed run only coarsens the timing of a change; it doesn't lose the last price.
-# Every 3 hours while this repo is private (about 240 Actions minutes a month,
-# shared with Tromi's CI); hourly once it's public.
+# Hourly since the repo went public (2026-11-07), where Actions minutes are free.
+# Every 3 hours before, while private; GitHub ran only 3 of those 8 a day.
 on:
   schedule:
-    - cron: "17 */3 * * *"
+    - cron: "17 * * * *"
   workflow_dispatch:
 
 permissions:

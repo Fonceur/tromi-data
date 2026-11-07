@@ -3,6 +3,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import collect  # noqa: E402
@@ -49,6 +50,17 @@ class ParsePrice(unittest.TestCase):
     def test_rejects_blank_null_and_text(self):
         for text in ("", "¢", None, "n/a¢", "nan¢", "inf¢"):
             self.assertIsNone(collect.parse_price(text), text)
+
+    def test_one_decimal_is_lossless_and_silent(self):
+        with mock.patch.object(collect, "warn") as warn:
+            for text, tenths in (("199.4¢", 1994), ("200¢", 2000), ("0.1¢", 1), ("179.9¢", 1799)):
+                self.assertEqual(collect.parse_price(text), tenths, text)
+        warn.assert_not_called()
+
+    def test_a_finer_price_is_flagged(self):
+        with mock.patch.object(collect, "warn") as warn:
+            self.assertEqual(collect.parse_price("199.45¢"), 1994)
+        warn.assert_called_once()
 
 
 class ParseFeature(unittest.TestCase):

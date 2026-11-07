@@ -65,7 +65,14 @@ def parse_price(text):
         cents = float(text.rstrip("¢"))
     except ValueError:
         return None
-    return round(cents * 10) if math.isfinite(cents) else None
+    if not math.isfinite(cents):
+        return None
+    tenths = round(cents * 10)
+    # The Régie's terms forbid modifying the data. Every price had one decimal on
+    # 2026-11-07, so this encoding is lossless; a finer price would be rounded.
+    if abs(tenths - cents * 10) > 1e-6:
+        warn(f"{text!r} has more than one decimal and was rounded: widen the encoding.")
+    return tenths
 
 
 def parse_feature(feature):

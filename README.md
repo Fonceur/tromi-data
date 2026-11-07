@@ -1,16 +1,19 @@
 # tromi-data
 
-Data collectors for [Tromi](https://play.google.com/store/apps/details?id=ca.romi.tromi).
-The plan lives in the app repo, in `docs/OVERPASS_EXTRACT_PLAN.md`.
+Data collectors for [Tromi](https://play.google.com/store/apps/details?id=ca.romi.tromi), a free,
+ad-free app for Québec drivers. Nothing here is served to the app yet.
 
-**This repo stays private until the Régie confirms the feed may be republished.**
-Recording prices isn't publishing them. Nothing here is served to the app yet.
+**Gas prices: Régie essence Québec, Régie de l'énergie.** Tromi is independent: it isn't mandated
+by, affiliated with or endorsed by the Régie de l'énergie. Reusing these prices comes with the
+Régie's conditions; see [Source and terms](#source-and-terms).
 
 ## Price history
 
-The Régie de l'énergie du Québec republishes its feed every 5 minutes and keeps only
-the latest files, so a price that isn't recorded on the day can't be recovered.
-`.github/workflows/collect.yml` runs `collect.py` on a schedule:
+Régie essence Québec republishes its feed every 5 minutes and keeps only the latest files, and
+the Régie doesn't plan to publish a per-station history, so a price that isn't recorded on the day
+can't be recovered. `.github/workflows/collect.yml` runs `collect.py` on an hourly schedule.
+GitHub drops some scheduled runs: on an every-3-hours schedule it ran 3 a day, not 8, so a change
+can be stamped several hours late.
 
 | Path | What |
 |---|---|
@@ -110,7 +113,34 @@ all 27,595, and the 193 prices within 2 minutes of a phone's refresh are all equ
 they're 15 days apart. July 18 is the only data between July 15 and Aug 1. No row repeats one in
 another file, and its last rows equal the prices on its station rows, for all 6,909.
 
-## Attribution
+## Source and terms
 
-Prices come from the Régie de l'énergie du Québec. The licence for republishing them is
-**unconfirmed**; see the note at the top.
+The prices come from **Régie essence Québec, Régie de l'énergie**: the
+[Régie essence Québec](https://regieessencequebec.ca) platform of the Régie de l'énergie du
+Québec. On 2026-11-05 the Régie confirmed by email that the platform's data is open to everyone
+in Québec, with no limit on access, frequency or redistribution, on three conditions. They apply
+to anyone who reuses the prices in this repo:
+
+1. The data must not be modified.
+2. The source, "Régie essence Québec, Régie de l'énergie", must be credited and visible at all
+   times.
+3. Nobody may claim to be mandated by the Régie de l'énergie, or let anyone believe they are.
+
+There is no formal licence, Creative Commons or otherwise: these conditions are the terms. The
+Régie takes no position on how a third party collects the data.
+
+What this repo does with the feed, so you can tell recorded data from Tromi's own work:
+
+- **Prices are as published.** `c` re-encodes `199.4¢` as `1994`, with no rounding: every price
+  had one decimal on 2026-11-07, and `collect.py` warns if one ever has more.
+- **Left out, not altered:** stations whose `Status` isn't "En opération", stations placed outside
+  Québec, and grades marked unavailable or with no readable price, unless more than half the
+  feed would go (then everything is kept). These rules mirror what the app shows.
+- **Tromi's, not the Régie's:** the station `id`, derived from the address and postal code because
+  the feed has none, and the `null` rows, which mark a price that left the feed.
+- **When:** `t` is the time the feed was generated, so a change happened at or before it.
+- **`history/seed/`** was recorded from the same feed by test devices running Tromi, with the
+  limits described above.
+
+Any figure computed from these prices, such as an average, is Tromi's calculation, not a Régie
+figure. The Régie publishes its own regional averages.
