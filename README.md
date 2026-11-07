@@ -1,7 +1,8 @@
 # tromi-data
 
 Data collectors for [Tromi](https://play.google.com/store/apps/details?id=ca.romi.tromi), a free,
-ad-free app for Québec drivers. Nothing here is served to the app yet.
+ad-free app for Québec drivers. Tromi for Android reads the one file published here, the 30-day
+price history, from version 1.0.9.
 
 **Gas prices: Régie essence Québec, Régie de l'énergie.** Tromi is independent: it isn't mandated
 by, affiliated with or endorsed by the Régie de l'énergie. Reusing these prices comes with the
@@ -118,7 +119,7 @@ another file, and its last rows equal the prices on its station rows, for all 6,
 `publish.py` builds `data/qc/prices-30d.json`, the last 30 days of changes, which Tromi
 downloads once to fill in a new install's price history. The workflow's `publish` job deploys
 only that file to GitHub Pages, at `https://fonceur.github.io/tromi-data/data/qc/prices-30d.json`,
-after each run that recorded a change.
+after each run that recorded a change. It has been live since 2026-11-07.
 
 ```json
 {"schema":1,"source":"Régie essence Québec, Régie de l'énergie","source_url":"https://regieessencequebec.ca",
