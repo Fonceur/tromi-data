@@ -3,7 +3,7 @@
 
 Writes `_site/data/qc/prices-30d.json`, which the workflow deploys to GitHub Pages:
 
-    {"source": "Régie essence Québec, Régie de l'énergie", ..., "from": <epoch s>,
+    {"schema": 1, "source": "Régie essence Québec, Régie de l'énergie", ..., "from": <epoch s>,
      "to": <epoch s>, "stations": {"<id>": {"REGULIER": [[<epoch s>, 1994], ...]}}}
 
 Each pair is a price the Régie published, as published (tenths of a cent), stamped
@@ -34,6 +34,8 @@ TERMS = (
     "the address and postal code. See https://github.com/Fonceur/tromi-data#source-and-terms"
 )
 
+# Bumped only for a change an older app can't read; the app rejects any other value.
+SCHEMA = 1
 WINDOW_S = 30 * 24 * 3600
 # How far before the window to read, so a row in it can be told apart from a repeat
 # of an older price. The collector writes only changes, so a month is plenty.
@@ -109,6 +111,7 @@ def build(rows, now_stamp):
 
 def document(start, end, stations):
     return {
+        "schema": SCHEMA,
         "source": SOURCE,
         "source_url": SOURCE_URL,
         "terms": TERMS,

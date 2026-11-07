@@ -121,9 +121,9 @@ only that file to GitHub Pages, at `https://fonceur.github.io/tromi-data/data/qc
 after each run that recorded a change.
 
 ```json
-{"source":"Régie essence Québec, Régie de l'énergie","source_url":"https://regieessencequebec.ca",
- "terms":"…","from":1762494900,"to":1765086900,"unit":"tenths of a cent: 1994 is 199.4¢",
- "rows":"…","stations":{"<id>":{"REGULIER":[[1765000000,1994]]}}}
+{"schema":1,"source":"Régie essence Québec, Régie de l'énergie","source_url":"https://regieessencequebec.ca",
+ "terms":"…","from":1791438900,"to":1794030900,"unit":"tenths of a cent: 1994 is 199.4¢",
+ "rows":"…","stations":{"<id>":{"REGULIER":[[1794000000,1994]]}}}
 ```
 
 - Each `[epoch seconds, price]` is a published price, stamped with the feed time it was first
@@ -135,7 +135,9 @@ after each run that recorded a change.
 - Under 2,000 stations, the build fails and Pages keeps the last good file.
 - About 2,450 stations and 186,000 rows on 2026-11-07: 3.4 MB, 620 KB gzipped.
 
-Every file carries `source` and `terms`, so a downloaded copy keeps its attribution.
+Every file carries `source` and `terms`, so a downloaded copy keeps its attribution. `schema` changes
+only for a format an older app can't read: the app rejects any other value and keeps the history
+it has.
 
 ```bash
 python3 publish.py   # writes _site/data/qc/prices-30d.json

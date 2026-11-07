@@ -108,6 +108,7 @@ class Document(unittest.TestCase):
     def test_every_file_carries_the_source_and_the_terms(self):
         doc = publish.document(0, 1, {})
         self.assertEqual(doc["source"], "Régie essence Québec, Régie de l'énergie")
+        self.assertEqual(doc["schema"], 1)
         for words in ("not modified", "visible at all times", "mandated", "independent"):
             self.assertIn(words, doc["terms"])
 
