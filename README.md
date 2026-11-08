@@ -1,8 +1,9 @@
 # tromi-data
 
 Data collectors for [Tromi](https://play.google.com/store/apps/details?id=ca.romi.tromi), a free,
-ad-free app for Québec drivers. Tromi for Android reads the one file published here, the 30-day
-price history, from version 1.0.9.
+ad-free app for Québec drivers. Two files are published here: the 30-day price history, which
+Tromi for Android reads from version 1.0.9, and daily regional averages, Tromi's own calculation,
+which no app version reads yet.
 
 **Gas prices: Régie essence Québec, Régie de l'énergie.** Tromi is independent: it isn't mandated
 by, affiliated with or endorsed by the Régie de l'énergie. Reusing these prices comes with the
@@ -114,12 +115,21 @@ all 27,595, and the 193 prices within 2 minutes of a phone's refresh are all equ
 they're 15 days apart. July 18 is the only data between July 15 and Aug 1. No row repeats one in
 another file, and its last rows equal the prices on its station rows, for all 6,909.
 
-## Published file
+## Published files
 
-`publish.py` builds `data/qc/prices-30d.json`, the last 30 days of changes, which Tromi
-downloads once to fill in a new install's price history. The workflow's `publish` job deploys
-only that file to GitHub Pages, at `https://fonceur.github.io/tromi-data/data/qc/prices-30d.json`,
-after each run that recorded a change. It has been live since 2026-11-07.
+`publish.py` builds both files under `data/qc/`, and the workflow's `publish` job deploys only
+them to GitHub Pages, under `https://fonceur.github.io/tromi-data/data/qc/`, after each run that
+recorded a change. If either fails its check, the build writes neither and Pages keeps the last
+good copy of both, since a deploy replaces the whole site.
+
+```bash
+python3 publish.py   # writes _site/data/qc/prices-30d.json and regional-daily.json
+```
+
+### `prices-30d.json`
+
+The last 30 days of changes, which Tromi downloads once to fill in a new install's price history.
+Live since 2026-11-07.
 
 ```json
 {"schema":1,"source":"Régie essence Québec, Régie de l'énergie","source_url":"https://regieessencequebec.ca",
@@ -140,9 +150,39 @@ Every file carries `source` and `terms`, so a downloaded copy keeps its attribut
 only for a format an older app can't read: the app rejects any other value and keeps the history
 it has.
 
-```bash
-python3 publish.py   # writes _site/data/qc/prices-30d.json
+### `regional-daily.json`
+
+**Tromi's calculation, not a Régie figure.** The Régie publishes regional averages of its own, and
+these can differ from them. Whoever shows them must label them as Tromi's and credit the source,
+as the file's `terms` say. For each Régie region and grade, one point per day for the 30 complete
+days, Québec time, before the last feed:
+
+```json
+{"schema":1,"source":"Régie essence Québec, Régie de l'énergie","source_url":"https://regieessencequebec.ca",
+ "terms":"…","method":"…","from":"2026-10-09","to":"2026-11-07","feed":1794153600,
+ "time_zone":"America/Toronto","unit":"tenths of a cent: 1994 is 199.4¢","points":"…",
+ "regions":{"Montréal":{"REGULIER":[["2026-10-09",1939,223]]}}}
 ```
+
+- A point is `[day, average, stations averaged]`. The average is of each station's last published
+  price at the end of that day, rounded half up to a tenth of a cent. `feed` is the last feed's
+  epoch seconds, as `to` is in the backfill file.
+- A station counts in the region the current feed gives it (`state/stations.json`), so a station
+  that has left the feed counts on no day.
+- A point is left out with fewer than 5 stations, or under 80% of the series' last-day count, so
+  the line moves with prices, not with how many stations are known. That drops the one station in
+  "Municipalités hors MRC \\ CMM", so 17 regions have lines.
+- Under 15 regions with a regular-grade line, the build fails: the join onto `state/stations.json`
+  broke.
+- Unlike the backfill file, it needs every current price, so it reads the daily files from
+  collection start, whose first run is a full snapshot. A price unchanged since then is known only
+  from it. That read grows with the archive, by about 6,000 rows a day.
+- **Before collection began, the points come from `history/seed/`**, with its limits. At the seam
+  (Oct 30, the first day the collector closed), 10 station and grade pairs the seed knew stop
+  counting, because the collector's first snapshot didn't have them. No line moved by more than
+  about 1¢ there. The seed days leave the window around Nov 30.
+- 17 regions, 3 grades, 37 KB, 8 KB gzipped, on 2026-11-08. Its Nov 7 points equal averages of the
+  collector's own state at its last run that day, for all 51 lines.
 
 ## Source and terms
 
@@ -173,5 +213,5 @@ What this repo does with the feed, so you can tell recorded data from Tromi's ow
 - **`history/seed/`** was recorded from the same feed by test devices running Tromi, with the
   limits described above.
 
-Any figure computed from these prices, such as an average, is Tromi's calculation, not a Régie
-figure. The Régie publishes its own regional averages.
+Any figure computed from these prices, such as the averages in `regional-daily.json`, is Tromi's
+calculation, not a Régie figure. The Régie publishes its own regional averages.

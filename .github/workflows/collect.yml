@@ -49,12 +49,13 @@ jobs:
           git push -q
           echo "changed=true" >> "$GITHUB_OUTPUT"
 
-  # Rebuilds the 30-day file Tromi backfills from, and deploys only that file to
-  # Pages (source: GitHub Actions), so the archive never lands on the site.
+  # Rebuilds the 30-day file Tromi backfills from and the daily regional averages,
+  # and deploys only those files to Pages (source: GitHub Actions), so the archive
+  # never lands on the site.
   # Inert until the repo variable PUBLISH_PAGES is "true", which waits on the repo
   # going public and Pages being enabled; a failed collect skips it, as does a feed
-  # with no change. A failed build (under its station floor) leaves Pages serving
-  # the last good file.
+  # with no change. A failed build (under either file's floor) writes neither file,
+  # so Pages keeps serving the last good copy of both.
   publish:
     needs: collect
     if: ${{ vars.PUBLISH_PAGES == 'true' && (needs.collect.outputs.changed == 'true' || github.event_name == 'workflow_dispatch') }}

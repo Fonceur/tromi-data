@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Build the file Tromi backfills its price history from: the last 30 days of changes.
+"""Build the two files the workflow deploys to GitHub Pages.
 
-Writes `_site/data/qc/prices-30d.json`, which the workflow deploys to GitHub Pages:
+`_site/data/qc/prices-30d.json`, the file Tromi backfills its price history from, holds the
+last 30 days of changes:
 
     {"schema": 1, "source": "Régie essence Québec, Régie de l'énergie", ..., "from": <epoch s>,
      "to": <epoch s>, "stations": {"<id>": {"REGULIER": [[<epoch s>, 1994], ...]}}}
@@ -11,17 +12,26 @@ with the feed time it was first seen at. Rows are kept only where the price diff
 from the one before it, which is how the app's `price_snapshots` table is written,
 so the file inserts there as is. Nothing is averaged, rounded or filled in.
 
+`_site/data/qc/regional-daily.json` is Tromi's own calculation from those prices, not
+the Régie's: a daily average per Régie region and grade over the 30 complete Québec days
+before the last feed, each point with the number of stations it averages:
+
+    {"schema": 1, ..., "from": "2026-10-09", "to": "2026-11-07",
+     "regions": {"Montréal": {"REGULIER": [["2026-10-09", 1939, 223], ...]}}}
+
 Sources: the collector's daily files, plus `history/seed/` for the time before
 collection began, when only test devices recorded prices.
 """
 import gzip
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parent
 OUT = Path("_site") / "data" / "qc" / "prices-30d.json"
+REGIONAL_OUT = Path("_site") / "data" / "qc" / "regional-daily.json"
 
 SOURCE = "Régie essence Québec, Régie de l'énergie"
 SOURCE_URL = "https://regieessencequebec.ca"
@@ -45,6 +55,34 @@ LOOKBACK_S = 30 * 24 * 3600
 COLLECTION_START = "2026-10-31T02:30:00Z"
 # Fewer stations than this means the archive, not the province, went wrong.
 MIN_STATIONS = 2000
+
+REGIONAL_TERMS = (
+    "Averages calculated by Tromi from the prices published by Régie essence Québec "
+    "(Régie de l'énergie). They are Tromi's figures, not the Régie's: the Régie publishes "
+    "regional averages of its own, which these can differ from, and nothing here may be "
+    "presented as one of them. Wherever these figures are shown, the source, \"Régie "
+    "essence Québec, Régie de l'énergie\", must be credited and visible, and they must be "
+    "labelled as Tromi's calculation. Tromi is independent of the Régie and isn't mandated "
+    "by it. See https://github.com/Fonceur/tromi-data#source-and-terms"
+)
+REGIONAL_METHOD = (
+    "For each day, Québec time, each station's last published price for the grade at the "
+    "end of that day, averaged over the region's stations that had one, and rounded half up "
+    "to a tenth of a cent. A station counts in the region the current feed gives it, so a "
+    "station that has left the feed counts on no day. A point is left out when fewer than "
+    "5 stations had a price, or fewer than 80% of the number on the series' last day."
+)
+# Québec's clock; America/Montreal is only a link to this zone.
+QUEBEC_TIME = ZoneInfo("America/Toronto")
+REGIONAL_DAYS = 30
+# An average over fewer stations reads as one station's price, not a region's.
+MIN_STATIONS_PER_POINT = 5
+# A day that knows far fewer stations than the last one averages a different set, so
+# the line would jump with coverage, not with prices (the seed's earliest days).
+MIN_COVERAGE = 0.8
+# Fewer regions with a regular-grade line than this means the station-to-region join
+# broke (17 regions qualified on 2026-11-08), so nothing is published.
+MIN_REGIONS = 15
 
 
 def epoch(stamp):
@@ -125,23 +163,136 @@ def document(start, end, stations):
     }
 
 
+def regional_days(now_stamp):
+    """The REGIONAL_DAYS complete Québec days before the one [now_stamp] falls on."""
+    today = datetime.fromtimestamp(epoch(now_stamp), QUEBEC_TIME).date()
+    return [today - timedelta(days=REGIONAL_DAYS - i) for i in range(REGIONAL_DAYS)]
+
+
+def day_end(day):
+    """The UTC stamp of the Québec midnight that ends [day] (DST days are 23 or 25 h)."""
+    return stamp(int(datetime.combine(day + timedelta(days=1), time(), QUEBEC_TIME).timestamp()))
+
+
+def regional_since(now_stamp):
+    """Where the regional build starts reading. Unlike the backfill file, it needs every
+    current price, and one that hasn't changed since the collector's first run is known
+    only from that run's full snapshot, so it never starts later than COLLECTION_START.
+    Before that, the seed is read from a month ahead of the window, as for the backfill.
+    """
+    opening = day_end(regional_days(now_stamp)[0] - timedelta(days=1))
+    return min(stamp(epoch(opening) - LOOKBACK_S), COLLECTION_START)
+
+
+def build_regional(rows, now_stamp, regions):
+    """{region: {fuel: [[day, average, stations], ...]}} for the days before [now_stamp].
+
+    [rows] must start at regional_since(now_stamp). [regions] maps a station id to its
+    Régie region. A row stamped at a day's closing midnight belongs to the next day: the
+    feed saw it then, not before.
+    """
+    days = regional_days(now_stamp)
+    close = {}
+    series = {}
+    i = 0
+
+    def advance(until):
+        nonlocal i
+        while i < len(rows) and rows[i][0] < until:
+            _, _, sid, fuel, cents = rows[i]
+            close[(sid, fuel)] = cents  # null: the grade or station left the feed
+            i += 1
+
+    collecting = False
+    for day in days:
+        end = day_end(day)
+        if not collecting and end > COLLECTION_START:
+            advance(COLLECTION_START)
+            # The collector's first run wrote the whole feed, but no null for a price only
+            # the seed knew, such as a grade a station had stopped selling before then.
+            close.clear()
+            collecting = True
+        advance(end)
+        totals = {}
+        for (sid, fuel), cents in close.items():
+            region = regions.get(sid)
+            if cents is not None and region:
+                total = totals.setdefault((region, fuel), [0, 0])
+                total[0] += cents
+                total[1] += 1
+        for key, (total, n) in totals.items():
+            # Half up in integers: Python's round() would send 1994.5 to 1994.
+            series.setdefault(key, []).append([day.isoformat(), (2 * total + n) // (2 * n), n])
+    out = {}
+    for (region, fuel), points in sorted(series.items()):
+        if points[-1][0] != days[-1].isoformat():
+            continue  # no price on the last day: the series has no reference count
+        floor = max(MIN_STATIONS_PER_POINT, MIN_COVERAGE * points[-1][2])
+        kept = [p for p in points if p[2] >= floor]
+        if kept:
+            out.setdefault(region, {})[fuel] = kept
+    return days[0], days[-1], out
+
+
+def regional_document(first, last, feed_at, regions):
+    return {
+        "schema": SCHEMA,
+        "source": SOURCE,
+        "source_url": SOURCE_URL,
+        "terms": REGIONAL_TERMS,
+        "method": REGIONAL_METHOD,
+        "from": first.isoformat(),
+        "to": last.isoformat(),
+        "feed": feed_at,
+        "time_zone": "America/Toronto",
+        "unit": "tenths of a cent: 1994 is 199.4¢",
+        "points": "per Régie region and grade, [day, average price, stations averaged], "
+                  "oldest first; a day missing from a series was left out (see method)",
+        "regions": regions,
+    }
+
+
+def regional_problem(regions):
+    """Why the regional file must not be published, or None."""
+    lines = sum(1 for fuels in regions.values() if "REGULIER" in fuels)
+    if lines < MIN_REGIONS:
+        return f"only {lines} regions have a regular-grade line (floor {MIN_REGIONS})"
+    return None
+
+
+def write_json(path, doc):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(doc, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    path.write_text(text, encoding="utf-8")
+    return len(text.encode())
+
+
 def main():
     now_stamp = json.loads((ROOT / "state" / "feed.json").read_text(encoding="utf-8"))["generated_at"]
     rows = load_rows(ROOT, since=stamp(epoch(now_stamp) - WINDOW_S - LOOKBACK_S))
     start, end, stations = build(rows, now_stamp)
+    # Either failure exits non-zero before anything is written, so the deploy step never
+    # runs and Pages keeps the last good copy of both files: a deploy replaces the site.
     if len(stations) < MIN_STATIONS:
-        # Exits non-zero, so the deploy step never runs and Pages keeps the last good file.
         print(f"::error::Not published: only {len(stations)} stations (floor {MIN_STATIONS}).")
         return 1
-    out = ROOT / OUT
-    out.parent.mkdir(parents=True, exist_ok=True)
-    text = json.dumps(document(start, end, stations), ensure_ascii=False, separators=(",", ":"),
-                      sort_keys=True)
-    out.write_text(text, encoding="utf-8")
+    known = json.loads((ROOT / "state" / "stations.json").read_text(encoding="utf-8"))
+    first, last, regions = build_regional(
+        load_rows(ROOT, since=regional_since(now_stamp)), now_stamp,
+        {sid: s.get("region") for sid, s in known.items()})
+    problem = regional_problem(regions)
+    if problem:
+        print(f"::error::Not published: {problem}.")
+        return 1
+    size = write_json(ROOT / OUT, document(start, end, stations))
     pairs = sum(len(f) for f in stations.values())
     count = sum(len(r) for f in stations.values() for r in f.values())
     print(f"{OUT}: {len(stations)} stations, {pairs} station-grade pairs, {count} rows, "
-          f"{len(text.encode()) // 1024} KB, up to {now_stamp}")
+          f"{size // 1024} KB, up to {now_stamp}")
+    size = write_json(ROOT / REGIONAL_OUT, regional_document(first, last, end, regions))
+    lines = sum(len(f) for f in regions.values())
+    print(f"{REGIONAL_OUT}: {len(regions)} regions, {lines} region-grade lines, "
+          f"{first} to {last}, {size // 1024} KB")
     return 0
 
 
