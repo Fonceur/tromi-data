@@ -116,10 +116,22 @@ class Document(unittest.TestCase):
     def test_the_regional_file_says_the_averages_are_tromis_not_the_regies(self):
         doc = publish.regional_document(date(2026, 11, 1), date(2026, 11, 30), 0, {})
         self.assertEqual(doc["source"], "Régie essence Québec, Régie de l'énergie")
+        self.assertEqual(doc["schema"], 1)
         self.assertEqual((doc["from"], doc["to"]), ("2026-11-01", "2026-11-30"))
         for words in ("calculated by Tromi", "not the Régie's", "averages of its own",
                       "credited and visible", "independent", "mandated"):
             self.assertIn(words, doc["terms"])
+
+    def test_the_two_files_number_their_formats_apart(self):
+        # The app rejects a backfill file whose schema isn't the one it reads, so a regional
+        # format change must never move it.
+        publish.REGIONAL_SCHEMA, saved = 2, publish.REGIONAL_SCHEMA
+        try:
+            self.assertEqual(publish.document(0, 1, {})["schema"], 1)
+            self.assertEqual(publish.regional_document(
+                date(2026, 11, 1), date(2026, 11, 30), 0, {})["schema"], 2)
+        finally:
+            publish.REGIONAL_SCHEMA = saved
 
 
 # Five stations per region, so a region clears MIN_STATIONS_PER_POINT.

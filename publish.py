@@ -46,6 +46,8 @@ TERMS = (
 
 # Bumped only for a change an older app can't read; the app rejects any other value.
 SCHEMA = 1
+# The regional file's own number: bumping SCHEMA for it would break every app's backfill.
+REGIONAL_SCHEMA = 1
 WINDOW_S = 30 * 24 * 3600
 # How far before the window to read, so a row in it can be told apart from a repeat
 # of an older price. The collector writes only changes, so a month is plenty.
@@ -236,7 +238,7 @@ def build_regional(rows, now_stamp, regions):
 
 def regional_document(first, last, feed_at, regions):
     return {
-        "schema": SCHEMA,
+        "schema": REGIONAL_SCHEMA,
         "source": SOURCE,
         "source_url": SOURCE_URL,
         "terms": REGIONAL_TERMS,
