@@ -251,5 +251,116 @@ class Regional(unittest.TestCase):
         self.assertIn("regular-grade", publish.regional_problem(regions))
 
 
+class History(unittest.TestCase):
+    """The month files and their index (W171): Tromi for iOS draws any days since the
+    archive's continuous start from them."""
+
+    def test_continuity_starts_after_the_last_gap_of_more_than_a_day(self):
+        rows = [row("2026-09-12T12:00:00Z", 1), row("2026-09-30T00:00:00Z", 2),
+                row("2026-09-30T23:00:00Z", 3), row("2026-10-01T23:00:00Z", 4)]
+        end = publish.epoch("2026-10-02T00:00:00Z")
+        # 18 days between the first two; then 23 h and exactly 24 h, both kept.
+        self.assertEqual(publish.continuous_from(rows, end), publish.epoch("2026-09-30T00:00:00Z"))
+        rows.append(row("2026-10-03T00:00:01Z", 5))
+        self.assertEqual(publish.continuous_from(rows, publish.epoch("2026-10-04T00:00:00Z")),
+                         publish.epoch("2026-10-03T00:00:01Z"))
+
+    def test_a_refresh_after_end_is_left_for_the_next_build(self):
+        rows = [row("2026-10-01T00:00:00Z", 1), row("2026-10-05T00:00:00Z", 2)]
+        self.assertEqual(publish.continuous_from(rows, publish.epoch("2026-10-02T00:00:00Z")),
+                         publish.epoch("2026-10-01T00:00:00Z"))
+
+    def test_months_are_quebec_months_held_to_the_archive(self):
+        start = publish.epoch("2026-10-01T02:15:58Z")   # Sept 30, 22:15 in Québec
+        end = publish.epoch("2027-01-10T00:00:00Z")
+        months = publish.history_months(start, end)
+        self.assertEqual([m[0] for m in months], ["2026-09", "2026-10", "2026-11", "2026-12", "2027-01"])
+        self.assertEqual(months[0][1], start)
+        self.assertEqual(months[1][1], publish.epoch("2026-10-01T04:00:00Z"))   # EDT midnight
+        self.assertEqual(months[2][1], publish.epoch("2026-11-01T04:00:00Z"))   # still EDT
+        self.assertEqual(months[3][1], publish.epoch("2026-12-01T05:00:00Z"))   # EST midnight
+        self.assertEqual(months[-1][2], end)
+        self.assertEqual(months[0][2], months[1][1])
+
+    def test_each_month_holds_its_changes_and_the_prices_in_force_at_its_start(self):
+        start = publish.epoch("2026-11-05T00:00:00Z")
+        rows = [row("2026-11-10T00:00:00Z", 1994), row("2026-11-20T00:00:00Z", 1899),
+                row("2026-11-25T00:00:00Z", 1899),                       # a repeat
+                row("2026-12-03T00:00:00Z", 1950), row("2026-11-12T00:00:00Z", 2100, sid="b")]
+        rows.sort(key=lambda r: r[0])
+        months = publish.build_months(rows, start, publish.epoch("2026-12-10T00:00:00Z"))
+        _, _, starts, stations = months["2026-11"]
+        self.assertEqual(starts, {})
+        self.assertEqual(stations["a"]["REGULIER"], [[publish.epoch("2026-11-10T00:00:00Z"), 1994],
+                                                     [publish.epoch("2026-11-20T00:00:00Z"), 1899]])
+        lo, _, starts, stations = months["2026-12"]
+        self.assertEqual(lo, publish.epoch("2026-12-01T05:00:00Z"))
+        self.assertEqual(starts, {"a": {"REGULIER": 1899}, "b": {"REGULIER": 2100}})
+        self.assertEqual(stations, {"a": {"REGULIER": [[publish.epoch("2026-12-03T00:00:00Z"), 1950]]}})
+
+    def test_a_month_with_no_change_still_carries_its_starting_prices(self):
+        rows = [row("2026-11-10T00:00:00Z", 1994)]
+        months = publish.build_months(rows, publish.epoch("2026-11-05T00:00:00Z"),
+                                      publish.epoch("2027-01-10T00:00:00Z"))
+        self.assertEqual(months["2026-12"][2], {"a": {"REGULIER": 1994}})
+        self.assertEqual(months["2027-01"][2], {"a": {"REGULIER": 1994}})
+        self.assertEqual(months["2027-01"][3], {})
+
+    def test_a_null_takes_a_pair_out_of_the_next_starts(self):
+        rows = [row("2026-11-10T00:00:00Z", 1994), row("2026-11-11T00:00:00Z", None)]
+        months = publish.build_months(rows, publish.epoch("2026-11-05T00:00:00Z"),
+                                      publish.epoch("2026-12-10T00:00:00Z"))
+        self.assertEqual(months["2026-12"][2], {})
+        self.assertEqual(months["2026-11"][3]["a"]["REGULIER"], [[publish.epoch("2026-11-10T00:00:00Z"), 1994]])
+
+    def test_a_pair_back_at_its_old_price_after_a_null_is_a_row_in_its_month(self):
+        # Out of the feed at December's start, back at its old price on the 3rd: with no
+        # start and no row, December alone couldn't draw it.
+        rows = [row("2026-11-10T00:00:00Z", 1994), row("2026-11-20T00:00:00Z", None),
+                row("2026-12-03T00:00:00Z", 1994)]
+        months = publish.build_months(rows, publish.epoch("2026-11-05T00:00:00Z"),
+                                      publish.epoch("2026-12-10T00:00:00Z"))
+        self.assertEqual(months["2026-12"][2], {})
+        self.assertEqual(months["2026-12"][3]["a"]["REGULIER"], [[publish.epoch("2026-12-03T00:00:00Z"), 1994]])
+        # Within one month, as in the 30-day file, a return to the same price is no change.
+        self.assertEqual(len(months["2026-11"][3]["a"]["REGULIER"]), 1)
+
+    def test_rows_before_the_continuous_start_are_left_out(self):
+        rows = [row("2026-11-01T00:00:00Z", 1500), row("2026-11-10T00:00:00Z", 1994)]
+        months = publish.build_months(rows, publish.epoch("2026-11-05T00:00:00Z"),
+                                      publish.epoch("2026-12-10T00:00:00Z"))
+        self.assertEqual(months["2026-11"][2], {})
+        self.assertEqual(months["2026-11"][3]["a"]["REGULIER"], [[publish.epoch("2026-11-10T00:00:00Z"), 1994]])
+
+    def test_a_price_only_the_seed_knew_is_forgotten_when_collection_begins(self):
+        # m's diesel left the feed before the collector's first run, which wrote no null for it.
+        rows = [row("2026-10-20T12:00:00Z", 2300, sid="m", fuel="DIESEL"),
+                row("2026-10-20T12:00:00Z", 1800), row(publish.COLLECTION_START, 1800)]
+        months = publish.build_months(rows, publish.epoch("2026-10-15T00:00:00Z"),
+                                      publish.epoch("2026-11-10T00:00:00Z"))
+        self.assertEqual(months["2026-11"][2], {"a": {"REGULIER": 1800}})
+        # The collector's baseline is written again, as its first reading.
+        self.assertEqual(len(months["2026-10"][3]["a"]["REGULIER"]), 2)
+
+    def test_the_files_carry_the_source_the_terms_and_their_own_format_number(self):
+        doc = publish.month_document("2026-11", 1, 2, {}, {})
+        index = publish.history_index(1, 2, ["2026-11"])
+        for d in (doc, index):
+            self.assertEqual(d["source"], "Régie essence Québec, Régie de l'énergie")
+            self.assertIn("not modified", d["terms"])
+            self.assertEqual(d["schema"], publish.HISTORY_SCHEMA)
+        self.assertEqual(index["months"], ["2026-11"])
+        self.assertEqual((index["from"], index["to"]), (1, 2))
+
+    def test_a_collected_month_with_too_few_stations_blocks_publishing(self):
+        start = publish.epoch(publish.COLLECTION_START)
+        full = {f"s{i}": {"REGULIER": 1994} for i in range(publish.MIN_STATIONS)}
+        self.assertIsNone(publish.history_problem({"2026-11": (start + 1, start + 2, full, {})}))
+        del full["s0"]
+        self.assertIn("2026-11", publish.history_problem({"2026-11": (start + 1, start + 2, full, {})}))
+        # A seed month knows what the phones knew, so it's not held to the floor.
+        self.assertIsNone(publish.history_problem({"2026-10": (start - 10, start - 5, {}, {})}))
+
+
 if __name__ == "__main__":
     unittest.main()

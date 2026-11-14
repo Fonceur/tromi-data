@@ -19,12 +19,22 @@ before the last feed, each point with the number of stations it averages:
     {"schema": 1, ..., "from": "2026-10-09", "to": "2026-11-07",
      "regions": {"Montréal": {"REGULIER": [["2026-10-09", 1939, 223], ...]}}}
 
+`_site/data/qc/history/prices-YYYY-MM.json` holds one Québec month of changes, in the
+30-day file's rows, plus `starts`, the price in force at the month's `from` for each
+station and grade where it's known. `_site/data/qc/history/index.json` names the months
+and the first moment from which the archive holds prices with no gap of more than a day:
+
+    {"schema": 1, ..., "from": <epoch s>, "to": <epoch s>, "months": ["2026-09", ...]}
+
+Tromi for iOS reads them to draw a price chart over any days since `from` (W171).
+
 Sources: the collector's daily files, plus `history/seed/` for the time before
 collection began, when only test devices recorded prices.
 """
 import gzip
 import json
 import sys
+from functools import lru_cache
 from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -32,6 +42,7 @@ from zoneinfo import ZoneInfo
 ROOT = Path(__file__).resolve().parent
 OUT = Path("_site") / "data" / "qc" / "prices-30d.json"
 REGIONAL_OUT = Path("_site") / "data" / "qc" / "regional-daily.json"
+HISTORY_OUT = Path("_site") / "data" / "qc" / "history"
 
 SOURCE = "Régie essence Québec, Régie de l'énergie"
 SOURCE_URL = "https://regieessencequebec.ca"
@@ -86,7 +97,16 @@ MIN_COVERAGE = 0.8
 # broke (17 regions qualified on 2026-11-08), so nothing is published.
 MIN_REGIONS = 15
 
+# The month files' and the index's own number, as the regional file has its own.
+HISTORY_SCHEMA = 1
+# The archive is continuous back to the first recorded refresh after a gap longer than
+# this. Prices change several times a day, so a longer gap is history lost. Measured on
+# 2026-11-13: a day reaches back to 2026-10-01T02:15:58Z (Sept 30, 22:15 in Québec), the
+# owner's choice; 12 hours would stop at Oct 30, after the seed's 14.6-hour gaps.
+MAX_GAP_S = 24 * 3600
 
+
+@lru_cache(maxsize=None)  # a few thousand distinct stamps, each parsed once
 def epoch(stamp):
     return int(datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ")
                .replace(tzinfo=timezone.utc).timestamp())
@@ -262,6 +282,142 @@ def regional_problem(regions):
     return None
 
 
+def continuous_from(rows, end):
+    """The first recorded refresh, at or before [end] (epoch s), from which no two
+    refreshes are more than MAX_GAP_S apart. A refresh is a distinct row stamp."""
+    stamps = sorted({epoch(r[0]) for r in rows if epoch(r[0]) <= end})
+    if not stamps:
+        return end
+    i = len(stamps) - 1
+    while i > 0 and stamps[i] - stamps[i - 1] <= MAX_GAP_S:
+        i -= 1
+    return stamps[i]
+
+
+def month_start(year, month):
+    """Québec midnight on the month's first day, as epoch seconds."""
+    return int(datetime(year, month, 1, tzinfo=QUEBEC_TIME).timestamp())
+
+
+def history_months(start, end):
+    """Each Québec month from the one [start] falls in to the one [end] falls in, as
+    (key, from, to): the month's own bounds, held to [start] and [end]."""
+    first = datetime.fromtimestamp(start, QUEBEC_TIME)
+    last = datetime.fromtimestamp(end, QUEBEC_TIME)
+    year, month = first.year, first.month
+    months = []
+    while (year, month) <= (last.year, last.month):
+        following = (year + 1, 1) if month == 12 else (year, month + 1)
+        months.append((f"{year:04d}-{month:02d}",
+                       max(start, month_start(year, month)), min(end, month_start(*following))))
+        year, month = following
+    return months
+
+
+def build_months(rows, start, end):
+    """{key: (from, to, starts, stations)} for each month from [start] to [end].
+
+    `stations` holds the month's changes as `build` writes them: a row only where the
+    price differs from the last one seen, `null` skipped. A pair the month doesn't know
+    yet (no start, no row) gets its first price as a row even when it repeats the last
+    one seen, as after a `null`, so every month can be drawn on its own. `starts` holds the price in
+    force at the month's `from`, for each station and grade that has one: a `null`
+    takes a pair out until it's priced again. Rows before [start] are left out, since
+    the archive has gaps there. At the collector's first run, every price is forgotten,
+    as the regional build does: that run wrote the whole feed, but no `null` for a
+    price only the seed knew.
+    """
+    months = history_months(start, end)
+    out = {key: (lo, hi, {}, {}) for key, lo, hi in months}
+    seen = {}      # the last price, for telling a change from a repeat, as `build`
+    current = {}   # the price in force, None once a pair left the feed
+    known = set()  # the pairs the month being built has a start or a row for
+    collecting = start >= epoch(COLLECTION_START)
+    m = 0
+
+    def open_month(index):
+        _, _, starts, _ = out[months[index][0]]
+        known.clear()
+        for (sid, fuel), cents in current.items():
+            if cents is not None:
+                starts.setdefault(sid, {})[fuel] = cents
+                known.add((sid, fuel))
+
+    if months:
+        open_month(0)
+    for t, _, sid, fuel, cents in rows:
+        at = epoch(t)
+        if at < start:
+            continue
+        if at > end:
+            break
+        if not collecting and t >= COLLECTION_START:
+            seen.clear()
+            current.clear()
+            collecting = True
+        while m + 1 < len(months) and at >= months[m + 1][1]:
+            m += 1
+            open_month(m)
+        current[(sid, fuel)] = cents
+        if cents is None or (seen.get((sid, fuel)) == cents and (sid, fuel) in known):
+            continue
+        seen[(sid, fuel)] = cents
+        known.add((sid, fuel))
+        out[months[m][0]][3].setdefault(sid, {}).setdefault(fuel, []).append([at, cents])
+    while m + 1 < len(months):
+        m += 1
+        open_month(m)
+    return out
+
+
+def month_document(key, start, end, starts, stations):
+    return {
+        "schema": HISTORY_SCHEMA,
+        "source": SOURCE,
+        "source_url": SOURCE_URL,
+        "terms": TERMS,
+        "month": key,
+        "time_zone": "America/Toronto",
+        "from": start,
+        "to": end,
+        "unit": "tenths of a cent: 1994 is 199.4¢",
+        "starts": starts,
+        "start": "per station and grade, the published price in force at `from`, where known",
+        "rows": "per station and grade, [epoch seconds, price], oldest first; each is a "
+                "published price, stamped with the feed time it was first seen at, and "
+                "kept only where it differs from the row before it",
+        "stations": stations,
+    }
+
+
+def history_index(start, end, keys):
+    return {
+        "schema": HISTORY_SCHEMA,
+        "source": SOURCE,
+        "source_url": SOURCE_URL,
+        "terms": TERMS,
+        "from": start,
+        "to": end,
+        "time_zone": "America/Toronto",
+        "continuity": f"from `from` on, no two recorded refreshes are more than "
+                      f"{MAX_GAP_S // 3600} hours apart",
+        "months": keys,
+        "path": "prices-<month>.json, beside this file",
+    }
+
+
+def history_problem(months):
+    """Why the month files must not be published, or None. A month the collector covered
+    from its start knows every station, so few of them means the archive broke."""
+    for key, (start, _, starts, stations) in months.items():
+        if start < epoch(COLLECTION_START):
+            continue
+        known = set(starts) | set(stations)
+        if len(known) < MIN_STATIONS:
+            return f"{key} knows only {len(known)} stations (floor {MIN_STATIONS})"
+    return None
+
+
 def write_json(path, doc):
     path.parent.mkdir(parents=True, exist_ok=True)
     text = json.dumps(doc, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
@@ -273,7 +429,7 @@ def main():
     now_stamp = json.loads((ROOT / "state" / "feed.json").read_text(encoding="utf-8"))["generated_at"]
     rows = load_rows(ROOT, since=stamp(epoch(now_stamp) - WINDOW_S - LOOKBACK_S))
     start, end, stations = build(rows, now_stamp)
-    # Either failure exits non-zero before anything is written, so the deploy step never
+    # Any failure exits non-zero before anything is written, so the deploy step never
     # runs and Pages keeps the last good copy of both files: a deploy replaces the site.
     if len(stations) < MIN_STATIONS:
         print(f"::error::Not published: only {len(stations)} stations (floor {MIN_STATIONS}).")
@@ -286,6 +442,13 @@ def main():
     if problem:
         print(f"::error::Not published: {problem}.")
         return 1
+    archive = load_rows(ROOT)
+    history_from = continuous_from(archive, end)
+    months = build_months(archive, history_from, end)
+    problem = history_problem(months)
+    if problem:
+        print(f"::error::Not published: {problem}.")
+        return 1
     size = write_json(ROOT / OUT, document(start, end, stations))
     pairs = sum(len(f) for f in stations.values())
     count = sum(len(r) for f in stations.values() for r in f.values())
@@ -295,6 +458,14 @@ def main():
     lines = sum(len(f) for f in regions.values())
     print(f"{REGIONAL_OUT}: {len(regions)} regions, {lines} region-grade lines, "
           f"{first} to {last}, {size // 1024} KB")
+    for key, (lo, hi, starts, changes) in months.items():
+        size = write_json(ROOT / HISTORY_OUT / f"prices-{key}.json",
+                          month_document(key, lo, hi, starts, changes))
+        count = sum(len(r) for f in changes.values() for r in f.values())
+        print(f"{HISTORY_OUT}/prices-{key}.json: {len(starts)} stations priced at its start, "
+              f"{count} rows, {size // 1024} KB")
+    write_json(ROOT / HISTORY_OUT / "index.json", history_index(history_from, end, list(months)))
+    print(f"{HISTORY_OUT}/index.json: continuous from {stamp(history_from)}, {len(months)} months")
     return 0
 
 

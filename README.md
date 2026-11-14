@@ -1,9 +1,10 @@
 # tromi-data
 
 Data collectors for [Tromi](https://play.google.com/store/apps/details?id=ca.romi.tromi), a free,
-ad-free app for Québec drivers. Two files are published here: the 30-day price history, which
-Tromi for Android reads from version 1.0.9, and daily regional averages, Tromi's own calculation,
-which no app version reads yet.
+ad-free app for Québec drivers. Three things are published here: the 30-day price history, which
+Tromi for Android reads from version 1.0.9; daily regional averages, Tromi's own calculation,
+which no app version reads yet; and the whole archive, one file per month, for Tromi for iOS's
+price chart.
 
 **Gas prices: Régie essence Québec, Régie de l'énergie.** Tromi is independent: it isn't mandated
 by, affiliated with or endorsed by the Régie de l'énergie. Reusing these prices comes with the
@@ -117,13 +118,13 @@ another file, and its last rows equal the prices on its station rows, for all 6,
 
 ## Published files
 
-`publish.py` builds both files under `data/qc/`, and the workflow's `publish` job deploys only
+`publish.py` builds every file under `data/qc/`, and the workflow's `publish` job deploys only
 them to GitHub Pages, under `https://fonceur.github.io/tromi-data/data/qc/`, after each run that
-recorded a change. If either fails its check, the build writes neither and Pages keeps the last
-good copy of both, since a deploy replaces the whole site.
+recorded a change. If any fails its check, the build writes none and Pages keeps the last good
+copy of each, since a deploy replaces the whole site.
 
 ```bash
-python3 publish.py   # writes _site/data/qc/prices-30d.json and regional-daily.json
+python3 publish.py   # writes _site/data/qc/prices-30d.json, regional-daily.json and history/
 ```
 
 ### `prices-30d.json`
@@ -183,6 +184,36 @@ days, Québec time, before the last feed:
   about 1¢ there. The seed days leave the window around Nov 30.
 - 17 regions, 3 grades, 37 KB, 8 KB gzipped, on 2026-11-08. Its Nov 7 points equal averages of the
   collector's own state at its last run that day, for all 51 lines.
+
+### `history/index.json` and `history/prices-YYYY-MM.json`
+
+The archive since its continuous start, one file per Québec month, which Tromi for iOS reads to
+draw its full-screen price chart over any days since then. Live from the first deploy after
+2026-11-13.
+
+```json
+{"schema":1,"source":"Régie essence Québec, Régie de l'énergie","source_url":"https://regieessencequebec.ca",
+ "terms":"…","from":1790820958,"to":1794612900,"time_zone":"America/Toronto","continuity":"…",
+ "months":["2026-09","2026-10","2026-11"],"path":"prices-<month>.json, beside this file"}
+```
+
+- **`from` is the continuous start:** the first recorded refresh after the last gap of more than
+  24 hours between two of them. On 2026-11-13 that was 02:15:58 UTC on Oct 1 (Sept 30, 22:15 in
+  Québec), in the seed: nothing covers Sept 13 to 29. A gap of more than a day, now or later, moves
+  `from` past it, since prices change several times a day.
+- Each month file has the 30-day file's rows, for its month, Québec time, held to `from` and `to`,
+  plus `starts`: the published price in force at its `from` for each station and grade that has
+  one. A month can be drawn on its own, and a station's line starts at the month's start. The first
+  month's `starts` is empty: nothing before `from` is used, since the archive has gaps there.
+- A `null` takes a pair out of the next months' `starts`, until it's priced again. At the
+  collector's first run every price is forgotten, as for the regional file, so a price only the
+  seed knew doesn't carry into November. The collector's baseline appears as a row then.
+- A month that began after collection started must know at least 2,000 stations, or the build
+  fails. A seed month knows what the phones knew: October starts with 233 stations priced, and
+  most stations' October lines start at their first recorded change.
+- A past month's file is rebuilt identically on every run, so it caches for good.
+- On 2026-11-13: September 24 KB (Sept 30 from 22:15), October 3.8 MB, November so far 1.6 MB.
+- Every file carries `source` and `terms`, as the others. `schema` is their own number.
 
 ## Source and terms
 
