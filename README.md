@@ -3,8 +3,8 @@
 Data collectors for [Tromi](https://play.google.com/store/apps/details?id=ca.romi.tromi), a free,
 ad-free app for Québec drivers. Three things are published here: the 30-day price history, which
 Tromi for Android reads from version 1.0.9; daily regional averages, Tromi's own calculation,
-which no app version reads yet; and the whole archive, one file per month, for Tromi for iOS's
-price chart.
+which no app version reads yet; and the whole archive, one file per month, for the full-screen
+price chart of Tromi for iOS, and of Tromi for Android from version 1.0.9.
 
 **Gas prices: Régie essence Québec, Régie de l'énergie.** Tromi is independent: it isn't mandated
 by, affiliated with or endorsed by the Régie de l'énergie. Reusing these prices comes with the
@@ -187,9 +187,9 @@ days, Québec time, before the last feed:
 
 ### `history/index.json` and `history/prices-YYYY-MM.json`
 
-The archive since its continuous start, one file per Québec month, which Tromi for iOS reads to
-draw its full-screen price chart over any days since then. Live from the first deploy after
-2026-11-13.
+The archive since its continuous start, one file per Québec month, which Tromi for iOS, and Tromi
+for Android from version 1.0.9, read to draw the full-screen price chart over any days since then.
+Live from the first deploy after 2026-11-13.
 
 ```json
 {"schema":1,"source":"Régie essence Québec, Régie de l'énergie","source_url":"https://regieessencequebec.ca",
