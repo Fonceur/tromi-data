@@ -1,10 +1,11 @@
 # tromi-data
 
 Data collectors for [Tromi](https://play.google.com/store/apps/details?id=ca.romi.tromi), a free,
-ad-free app for Québec drivers. Three things are published here: the 30-day price history, which
-Tromi for Android reads from version 1.0.9; daily regional averages, Tromi's own calculation,
-which no app version reads yet; and the whole archive, one file per month, for the full-screen
-price chart of Tromi for iOS, and of Tromi for Android from version 1.0.9.
+ad-free app for Québec drivers. Four things are published here: the 30-day price history, which
+Tromi for Android reads from version 1.0.9; the same history one file per Québec day, which it
+reads to fill a gap in a phone's history; daily regional averages, Tromi's own calculation, for
+its Gas Prices screen; and the whole archive, one file per month, for the full-screen price chart
+of Tromi for iOS, and of Tromi for Android from version 1.0.9.
 
 **Gas prices: Régie essence Québec, Régie de l'énergie.** Tromi is independent: it isn't mandated
 by, affiliated with or endorsed by the Régie de l'énergie. Reusing these prices comes with the
@@ -124,7 +125,7 @@ recorded a change. If any fails its check, the build writes none and Pages keeps
 copy of each, since a deploy replaces the whole site.
 
 ```bash
-python3 publish.py   # writes _site/data/qc/prices-30d.json, regional-daily.json and history/
+python3 publish.py   # writes _site/data/qc/prices-30d.json, days/, regional-daily.json and history/
 ```
 
 ### `prices-30d.json`
@@ -146,6 +147,28 @@ Live since 2026-11-07.
 - Before collection began (2026-10-31 02:30 UTC), rows come from `history/seed/`.
 - Under 2,000 stations, the build fails and Pages keeps the last good file.
 - About 2,450 stations and 186,000 rows on 2026-11-07: 3.4 MB, 620 KB gzipped.
+
+### `days/prices-YYYY-MM-DD.json`
+
+The 30-day file cut at Québec midnight, one file per day of its window: 31 files, the first and
+the last partial. Tromi for Android, from version 1.0.9, fills a gap of more than 12 hours in a
+phone's history from the days it covers, rather than the whole file. Live from the first deploy
+after 2026-11-15.
+
+```json
+{"schema":1,"source":"Régie essence Québec, Régie de l'énergie","source_url":"https://regieessencequebec.ca",
+ "terms":"…","day":"2026-11-14","time_zone":"America/Toronto","from":1794632400,"to":1794718800,
+ "unit":"tenths of a cent: 1994 is 199.4¢","rows":"…","stations":{"<id>":{"REGULIER":[[1794700000,1994]]}}}
+```
+
+- `from` and `to` are the day's Québec midnights, held to the 30-day file's window. A DST day is 23
+  or 25 hours long.
+- Together the files are the 30-day file, row for row, in its format and `schema`. A row is in the
+  day its time falls on in Québec.
+- A day with no change still has its file, so a day inside the window is never missing. Today's
+  file appears with the first deploy after Québec midnight.
+- About 34 KB gzipped for a full day, 44 KB at most, against 624 KB for the whole file
+  (2026-11-15, gzip level 6).
 
 Every file carries `source` and `terms`, so a downloaded copy keeps its attribution. `schema` changes
 only for a format an older app can't read: the app rejects any other value and keeps the history

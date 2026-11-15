@@ -43,6 +43,7 @@ ROOT = Path(__file__).resolve().parent
 OUT = Path("_site") / "data" / "qc" / "prices-30d.json"
 REGIONAL_OUT = Path("_site") / "data" / "qc" / "regional-daily.json"
 HISTORY_OUT = Path("_site") / "data" / "qc" / "history"
+DAYS_OUT = Path("_site") / "data" / "qc" / "days"
 
 SOURCE = "Régie essence Québec, Régie de l'énergie"
 SOURCE_URL = "https://regieessencequebec.ca"
@@ -183,6 +184,44 @@ def document(start, end, stations):
                 "kept only where it differs from the row before it",
         "stations": stations,
     }
+
+
+def quebec_midnight(day):
+    """Québec midnight at the start of [day], as epoch seconds (DST days are 23 or 25 h)."""
+    return int(datetime.combine(day, time(), QUEBEC_TIME).timestamp())
+
+
+def build_days(start, end, stations):
+    """{day: (from, to, stations)} for each Québec day from the one [start] falls on to the
+    one [end] falls on: the 30-day file's rows cut at Québec midnight, each day's bounds
+    held to [start] and [end]. Together they are the 30-day file, row for row.
+
+    Tromi for Android fills a gap of more than 12 hours from the days it covers rather
+    than the whole file. A day with no change still gets its file, so a day inside the
+    window is never missing.
+    """
+    first = datetime.fromtimestamp(start, QUEBEC_TIME).date()
+    last = datetime.fromtimestamp(end, QUEBEC_TIME).date()
+    days = {}
+    day = first
+    while day <= last:
+        days[day.isoformat()] = (max(start, quebec_midnight(day)),
+                                 min(end, quebec_midnight(day + timedelta(days=1))), {})
+        day += timedelta(days=1)
+    for sid, grades in stations.items():
+        for fuel, kept in grades.items():
+            for at, cents in kept:
+                key = datetime.fromtimestamp(at, QUEBEC_TIME).date().isoformat()
+                days[key][2].setdefault(sid, {}).setdefault(fuel, []).append([at, cents])
+    return days
+
+
+def day_document(key, start, end, stations):
+    """A day of the 30-day file, in its format (the app reads both with one parser)."""
+    doc = document(start, end, stations)
+    doc["day"] = key
+    doc["time_zone"] = "America/Toronto"
+    return doc
 
 
 def regional_days(now_stamp):
@@ -454,6 +493,11 @@ def main():
     count = sum(len(r) for f in stations.values() for r in f.values())
     print(f"{OUT}: {len(stations)} stations, {pairs} station-grade pairs, {count} rows, "
           f"{size // 1024} KB, up to {now_stamp}")
+    days = build_days(start, end, stations)
+    size = sum(write_json(ROOT / DAYS_OUT / f"prices-{key}.json", day_document(key, lo, hi, part))
+               for key, (lo, hi, part) in days.items())
+    keys = list(days)
+    print(f"{DAYS_OUT}: {len(keys)} days, {keys[0]} to {keys[-1]}, {size // 1024} KB in all")
     size = write_json(ROOT / REGIONAL_OUT, regional_document(first, last, end, regions))
     lines = sum(len(f) for f in regions.values())
     print(f"{REGIONAL_OUT}: {len(regions)} regions, {lines} region-grade lines, "

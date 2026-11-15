@@ -362,5 +362,57 @@ class History(unittest.TestCase):
         self.assertIsNone(publish.history_problem({"2026-10": (start - 10, start - 5, {}, {})}))
 
 
+class Days(unittest.TestCase):
+    """One file per Québec day, cut from the 30-day file: Tromi for Android fills a gap of
+    more than 12 hours from the days it covers rather than the whole file."""
+
+    def window(self, rows, now=NOW):
+        start, end, stations = publish.build(rows, now)
+        return start, end, stations, publish.build_days(start, end, stations)
+
+    def test_the_days_together_are_the_30_day_file(self):
+        rows = [row("2026-11-01T12:00:00Z", 1994), row("2026-11-02T03:59:59Z", 1899),
+                row("2026-11-02T04:00:00Z", 1950), row("2026-11-20T00:00:00Z", 2010, fuel="SUPER"),
+                row("2026-11-30T11:00:00Z", 1880, sid="b")]
+        _, _, stations, days = self.window(rows)
+        joined = {}
+        for _, _, part in days.values():
+            for sid, grades in part.items():
+                for fuel, kept in grades.items():
+                    joined.setdefault(sid, {}).setdefault(fuel, []).extend(kept)
+        self.assertEqual(joined, stations)
+
+    def test_a_day_ends_at_quebec_midnight_not_utc(self):
+        # 23:59:59 on Nov 1 in Québec is 03:59:59Z on Nov 2 (EST from Nov 1, 2 a.m.).
+        _, _, _, days = self.window([row("2026-11-02T03:59:59Z", 1899), row("2026-11-02T05:00:00Z", 1950)])
+        self.assertEqual(days["2026-11-01"][2]["a"]["REGULIER"], [[publish.epoch("2026-11-02T03:59:59Z"), 1899]])
+        self.assertEqual(days["2026-11-02"][2]["a"]["REGULIER"], [[publish.epoch("2026-11-02T05:00:00Z"), 1950]])
+        self.assertEqual(days["2026-11-02"][0], publish.epoch("2026-11-02T05:00:00Z"))   # EST midnight
+
+    def test_every_day_of_the_window_has_a_file_held_to_its_bounds(self):
+        start, end, _, days = self.window([])
+        keys = list(days)
+        self.assertEqual(keys[0], "2026-10-31")    # NOW less 30 days: Oct 31, 08:00 in Québec
+        self.assertEqual(keys[-1], "2026-11-30")
+        self.assertEqual(len(keys), 31)
+        self.assertEqual(days[keys[0]][0], start)
+        self.assertEqual(days[keys[-1]][1], end)
+        self.assertEqual(days["2026-11-15"], (publish.epoch("2026-11-15T05:00:00Z"),
+                                              publish.epoch("2026-11-16T05:00:00Z"), {}))
+        # The DST day is 25 hours long.
+        lo, hi, _ = days["2026-11-01"]
+        self.assertEqual(hi - lo, 25 * 3600)
+
+    def test_the_files_carry_the_source_the_terms_and_the_backfill_schema(self):
+        # The app reads a day file with the 30-day file's parser, so it keeps that format.
+        doc = publish.day_document("2026-11-15", 1, 2, {})
+        self.assertEqual(doc["source"], "Régie essence Québec, Régie de l'énergie")
+        self.assertIn("not modified", doc["terms"])
+        self.assertEqual(doc["schema"], publish.SCHEMA)
+        self.assertEqual((doc["day"], doc["time_zone"], doc["from"], doc["to"]),
+                         ("2026-11-15", "America/Toronto", 1, 2))
+        self.assertEqual(doc["stations"], {})
+
+
 if __name__ == "__main__":
     unittest.main()
