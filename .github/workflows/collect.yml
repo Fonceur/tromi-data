@@ -63,11 +63,6 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -80,5 +75,23 @@ jobs:
         with:
           path: _site
 
+  # Its own job, not a step after the upload: deploy-pages lists the run's artifacts
+  # once, with no retry, and a listing ~0.3 s after the upload finalized came back
+  # empty ("No artifacts named github-pages", 4 runs from 2026-11-20 to 11-24,
+  # actions/deploy-pages#451). Here the lookup waits for a new job to start. And
+  # "Re-run failed jobs" now re-runs only this job: re-running the old single job
+  # uploaded a second artifact, and the lookup then failed on two.
+  deploy:
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
       - id: deploy
         uses: actions/deploy-pages@v5

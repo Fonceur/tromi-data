@@ -119,10 +119,12 @@ another file, and its last rows equal the prices on its station rows, for all 6,
 
 ## Published files
 
-`publish.py` builds every file under `data/qc/`, and the workflow's `publish` job deploys only
-them to GitHub Pages, under `https://fonceur.github.io/tromi-data/data/qc/`, after each run that
-recorded a change. If any fails its check, the build writes none and Pages keeps the last good
-copy of each, since a deploy replaces the whole site.
+`publish.py` builds every file under `data/qc/`. The workflow's `publish` job uploads only them,
+and its `deploy` job deploys them to GitHub Pages, under
+`https://fonceur.github.io/tromi-data/data/qc/`, after each run that recorded a change. If any
+fails its check, the build writes none and Pages keeps the last good copy of each, since a deploy
+replaces the whole site. If `deploy` fails, "Re-run failed jobs" re-runs only that job, within a
+day of the upload (the artifact's retention).
 
 ```bash
 python3 publish.py   # writes _site/data/qc/prices-30d.json, days/, regional-daily.json and history/
